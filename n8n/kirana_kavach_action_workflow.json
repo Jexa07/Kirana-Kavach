@@ -1,0 +1,84 @@
+{
+  "name": "Kirana Kavach - Approved Action Executor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kirana-kavach/action",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e20c2f69-1f7b-4c14-8a6a-58f20b4b2e0c",
+      "name": "Kavach Action Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "d3dc3f8e-a91e-4fbf-9f50-5c5f19e08d3c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\n\nif (input.approved !== true) {\n  throw new Error('Kirana Kavach action was not approved.');\n}\n\nconst merchantId = input.merchant_id;\nconst action = input.action ?? {};\nconst actionType = action.type;\nconst payload = action.payload ?? {};\nconst now = new Date().toISOString();\n\nif (!merchantId || !actionType) {\n  throw new Error('merchant_id and action.type are required.');\n}\n\nif (actionType === 'CREATE_PAYTM_SUPPORT_CASE') {\n  const ids = payload.transaction_ids ?? [];\n  const amount = Number(payload.pending_amount ?? 0);\n\n  return [{\n    json: {\n      merchant_id: merchantId,\n      action_type: actionType,\n      status: 'executed',\n      external_id: `KK-SUPPORT-DEMO-${Date.now()}`,\n      outcome_note: `Demo Paytm support case prepared for ${ids.length} transaction(s) totaling ₹${amount.toFixed(0)}.`,\n      executed_at: now,\n      provider: 'n8n',\n      confirmation_source: input.confirmation_source ?? 'unknown'\n    }\n  }];\n}\n\nif (actionType === 'DRAFT_CUSTOMER_MESSAGE') {\n  const message = String(payload.message ?? '').trim();\n  const customerId = String(payload.customer_id ?? '').trim();\n\n  if (!message) {\n    throw new Error('Customer message draft is missing.');\n  }\n\n  if (!customerId) {\n    throw new Error('Customer ID is missing.');\n  }\n\n  const campaignId = `KK-REACT-DEMO-${Date.now()}`;\n  const paymentLinkReference = `KK-PAY-DEMO-${Date.now()}`;\n\n  return [{\n    json: {\n      merchant_id: merchantId,\n      action_type: actionType,\n      status: 'prepared',\n      external_id: campaignId,\n      campaign_type: 'customer_reactivation',\n      customer_id: customerId,\n      message: message,\n      payment_link_reference: paymentLinkReference,\n      outcome_note: 'Customer reactivation pack prepared for merchant review; no customer message was sent automatically.',\n      executed_at: now,\n      provider: 'n8n',\n      confirmation_source: input.confirmation_source ?? 'unknown'\n    }\n  }];\n}\n\nthrow new Error(`Unsupported action type: ${actionType}`);"
+      },
+      "id": "dd0f2c19-f90e-4d6b-8c4f-55cd9a9e5eb2",
+      "name": "Execute Approved Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "f6cddf26-d816-47e6-95c5-799c6d9b9c9d",
+      "name": "Return Execution Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        840,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Kavach Action Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute Approved Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Approved Action": {
+      "main": [
+        [
+          {
+            "node": "Return Execution Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6ed1fb1b-fc51-4c79-9dc9-03d80b43d3a8",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

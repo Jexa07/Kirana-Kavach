@@ -1,0 +1,14 @@
+{
+    "merchant_id": "M1001",
+    "approved": true,
+    "confirmation_source": "ui",
+    "action": {
+        "type": "DRAFT_CUSTOMER_MESSAGE",
+        "payload": {
+            "customer_id": "C1001",
+            "message": "नमस्ते, काफी समय से आपसे मुलाकात नहीं हुई। जब भी सुविधा हो, दुकान पर ज़रूर आइए।",
+            "campaign_type": "customer_reactivation",
+            "payment_link_mode": "demo_only"
+        }
+    }
+}
