@@ -907,27 +907,8 @@ Remembers what happened.
 
 # 👥 Team
 
-Built for the **Paytm Build for India AI Hackathon — Mumbai Edition**.
-
-**Track:** Merchant Growth AI
-
-### Team
-
 - **Arpita Pani**
 - **Sanjana Annam**
-
----
-
-# 🙌 Acknowledgements
-
-Built using technologies and platforms provided as part of the hackathon ecosystem:
-
-- **Paytm**
-- **Sarvam AI**
-- **Cognee**
-- **n8n**
-
-Special thanks to the organisers, mentors and fellow builders who made the hackathon experience possible.
 
 ---
 
