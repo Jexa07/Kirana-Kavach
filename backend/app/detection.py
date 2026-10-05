@@ -58,16 +58,19 @@ def detect_customer_frequency_drop(
     as_of: datetime,
     minimum_purchases: int = 3,
 ) -> list[dict[str, Any]]:
-    by_customer: defaultdict[str, list[datetime]] = defaultdict(list)
+    from collections import Counter
+
+    by_customer: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for txn in transactions:
         customer_id = txn.get("customer_id")
-        if txn["status"] != "SUCCESS" or not customer_id:
+        if txn.get("status") != "SUCCESS" or not customer_id:
             continue
-        by_customer[customer_id].append(datetime.fromisoformat(txn["timestamp"]))
+        by_customer[customer_id].append(txn)
 
     leaks = []
-    for customer_id, timestamps in by_customer.items():
-        timestamps.sort()
+    for customer_id, cust_txns in by_customer.items():
+        cust_txns.sort(key=lambda t: t["timestamp"])
+        timestamps = [datetime.fromisoformat(t["timestamp"]) for t in cust_txns]
         if len(timestamps) < minimum_purchases:
             continue
 
@@ -83,6 +86,29 @@ def detect_customer_frequency_drop(
         current_gap = (as_of - timestamps[-1]).total_seconds() / 86400
 
         if normal_gap > 0 and current_gap > 2 * normal_gap:
+            total_purchases = len(cust_txns)
+            amounts = [float(t["amount"]) for t in cust_txns]
+            total_spent = round(sum(amounts), 2)
+            average_ticket = round(total_spent / total_purchases, 2)
+
+            mode_counts = Counter(t.get("payment_mode", "UPI") for t in cust_txns)
+            preferred_payment_mode = (
+                mode_counts.most_common(1)[0][0] if mode_counts else "UPI"
+            )
+
+            descending_txns = sorted(
+                cust_txns, key=lambda t: t["timestamp"], reverse=True
+            )
+            recent_transactions = [
+                {
+                    "transaction_id": t["transaction_id"],
+                    "amount": float(t["amount"]),
+                    "timestamp": t["timestamp"],
+                    "payment_mode": t.get("payment_mode", "UPI"),
+                }
+                for t in descending_txns[:5]
+            ]
+
             leaks.append(
                 {
                     "type": "customer_frequency_drop",
@@ -91,6 +117,11 @@ def detect_customer_frequency_drop(
                     "current_gap_days": round(current_gap, 1),
                     "ratio_vs_normal": round(current_gap / normal_gap, 1),
                     "last_purchase": timestamps[-1].isoformat(),
+                    "total_purchases": total_purchases,
+                    "total_spent": total_spent,
+                    "average_ticket": average_ticket,
+                    "preferred_payment_mode": preferred_payment_mode,
+                    "recent_transactions": recent_transactions,
                     "rule": "current gap > 2x normal gap",
                 }
             )

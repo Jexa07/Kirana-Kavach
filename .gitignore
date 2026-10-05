@@ -6,3 +6,4 @@ node_modules/
 frontend/dist/
 data/cognee/
 data/cognee_system/
+backend/data/

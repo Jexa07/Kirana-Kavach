@@ -20,21 +20,83 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $json.body ?? $json;\n\nif (input.approved !== true) {\n  throw new Error('Kirana Kavach action was not approved.');\n}\n\nconst merchantId = input.merchant_id;\nconst action = input.action ?? {};\nconst actionType = action.type;\nconst payload = action.payload ?? {};\nconst now = new Date().toISOString();\n\nif (!merchantId || !actionType) {\n  throw new Error('merchant_id and action.type are required.');\n}\n\nif (actionType === 'CREATE_PAYTM_SUPPORT_CASE') {\n  const ids = payload.transaction_ids ?? [];\n  const amount = Number(payload.pending_amount ?? 0);\n\n  return [{\n    json: {\n      merchant_id: merchantId,\n      action_type: actionType,\n      status: 'executed',\n      external_id: `KK-SUPPORT-DEMO-${Date.now()}`,\n      outcome_note: `Demo Paytm support case prepared for ${ids.length} transaction(s) totaling ₹${amount.toFixed(0)}.`,\n      executed_at: now,\n      provider: 'n8n',\n      confirmation_source: input.confirmation_source ?? 'unknown'\n    }\n  }];\n}\n\nif (actionType === 'DRAFT_CUSTOMER_MESSAGE') {\n  const message = String(payload.message ?? '').trim();\n  const customerId = String(payload.customer_id ?? '').trim();\n\n  if (!message) {\n    throw new Error('Customer message draft is missing.');\n  }\n\n  if (!customerId) {\n    throw new Error('Customer ID is missing.');\n  }\n\n  const campaignId = `KK-REACT-DEMO-${Date.now()}`;\n  const paymentLinkReference = `KK-PAY-DEMO-${Date.now()}`;\n\n  return [{\n    json: {\n      merchant_id: merchantId,\n      action_type: actionType,\n      status: 'prepared',\n      external_id: campaignId,\n      campaign_type: 'customer_reactivation',\n      customer_id: customerId,\n      message: message,\n      payment_link_reference: paymentLinkReference,\n      outcome_note: 'Customer reactivation pack prepared for merchant review; no customer message was sent automatically.',\n      executed_at: now,\n      provider: 'n8n',\n      confirmation_source: input.confirmation_source ?? 'unknown'\n    }\n  }];\n}\n\nthrow new Error(`Unsupported action type: ${actionType}`);"
+        "jsCode": "const input = $json.body ?? $json;\n\nif (input.approved !== true) {\n  throw new Error('Kirana Kavach action was not approved.');\n}\n\nconst merchantId = input.merchant_id;\nconst action = input.action ?? {};\nconst actionType = action.type;\nconst payload = action.payload ?? {};\nconst now = new Date().toISOString();\n\nif (!merchantId || !actionType) {\n  throw new Error('merchant_id and action.type are required.');\n}\n\nif (actionType === 'CREATE_PAYTM_SUPPORT_CASE') {\n  const ids = payload.transaction_ids ?? [];\n  const amount = Number(payload.pending_amount ?? 0);\n\n  return [{\n    json: {\n      use_twilio: false,\n      response: {\n        merchant_id: merchantId,\n        action_type: actionType,\n        status: 'executed',\n        external_id: `KK-SUPPORT-DEMO-${Date.now()}`,\n        outcome_note: `Demo Paytm support case prepared for ${ids.length} transaction(s) totaling ₹${amount.toFixed(0)}.`,\n        executed_at: now,\n        provider: 'n8n',\n        confirmation_source: input.confirmation_source ?? 'unknown'\n      }\n    }\n  }];\n}\n\nif (actionType === 'DRAFT_CUSTOMER_MESSAGE') {\n  const message = String(payload.message ?? '').trim();\n  const customerId = String(payload.customer_id ?? '').trim();\n\n  if (!message) {\n    throw new Error('Customer message draft is missing.');\n  }\n\n  if (!customerId) {\n    throw new Error('Customer ID is missing.');\n  }\n\n  const twilioTo = String(payload.twilio_whatsapp_to ?? '').trim();\n  const twilioFrom = String(payload.twilio_whatsapp_from ?? '').trim();\n  const twilioAccountSid = String(payload.twilio_account_sid ?? '').trim();\n  const twilioContentSid = String(payload.twilio_content_sid ?? '').trim();\n\n  if (twilioTo && twilioFrom && twilioAccountSid && twilioContentSid) {\n    return [{\n      json: {\n        use_twilio: true,\n        merchant_id: merchantId,\n        customer_id: customerId,\n        message: message,\n        confirmation_source: input.confirmation_source ?? 'unknown',\n        twilio_whatsapp_to: twilioTo,\n        twilio_whatsapp_from: twilioFrom,\n        twilio_account_sid: twilioAccountSid,\n        twilio_content_sid: twilioContentSid\n      }\n    }];\n  }\n\n  const campaignId = `KK-REACT-DEMO-${Date.now()}`;\n  const paymentLinkReference = `KK-PAY-DEMO-${Date.now()}`;\n\n  return [{\n    json: {\n      use_twilio: false,\n      response: {\n        merchant_id: merchantId,\n        action_type: actionType,\n        status: 'prepared',\n        external_id: campaignId,\n        campaign_type: 'customer_reactivation',\n        customer_id: customerId,\n        message: message,\n        payment_link_reference: paymentLinkReference,\n        outcome_note: 'Customer reactivation pack prepared for merchant review; no customer message was sent automatically.',\n        executed_at: now,\n        provider: 'n8n',\n        confirmation_source: input.confirmation_source ?? 'unknown'\n      }\n    }\n  }];\n}\n\nthrow new Error(`Unsupported action type: ${actionType}`);"
       },
       "id": "dd0f2c19-f90e-4d6b-8c4f-55cd9a9e5eb2",
-      "name": "Execute Approved Action",
+      "name": "Validate and Prepare Action",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
+        520,
         300
       ]
     },
     {
       "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.use_twilio }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "c71a39d4-1a2b-4e5f-9c0d-3b4a5f6e7d8c",
+      "name": "Branch On Twilio",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $json.twilio_account_sid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "=To={{ encodeURIComponent($json.twilio_whatsapp_to) }}&From={{ encodeURIComponent($json.twilio_whatsapp_from) }}&ContentSid={{ encodeURIComponent($json.twilio_content_sid) }}",
+        "options": {
+          "onError": "continueErrorOutput"
+        }
+      },
+      "id": "a82b4c6d-3e4f-5a6b-7c8d-9e0f1a2b3c4d",
+      "name": "Send Twilio WhatsApp Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        180
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "twilio-auth-credential",
+          "name": "Twilio WhatsApp Auth Credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const twilioRes = $json;\nconst req = $('Validate and Prepare Action').first().json;\nconst now = new Date().toISOString();\n\nfunction maskPhone(phone) {\n  if (!phone) return 'unknown';\n  const str = String(phone).trim();\n  if (str.length <= 6) return str;\n  return str.slice(0, 5) + '******' + str.slice(-4);\n}\n\nif (twilioRes.sid) {\n  return [{\n    json: {\n      response: {\n        merchant_id: req.merchant_id,\n        action_type: 'DRAFT_CUSTOMER_MESSAGE',\n        status: twilioRes.status || 'queued',\n        channel: 'whatsapp',\n        provider: 'twilio',\n        message_sid: twilioRes.sid,\n        external_id: twilioRes.sid,\n        customer_id: req.customer_id,\n        campaign_type: 'customer_reactivation',\n        recipient: maskPhone(req.twilio_whatsapp_to),\n        template_sid: req.twilio_content_sid,\n        draft_message: req.message,\n        payment_link_reference: `KK-PAY-DEMO-${Date.now()}`,\n        outcome_note: 'WhatsApp message submitted to Twilio using the configured trial template.',\n        executed_at: now,\n        confirmation_source: req.confirmation_source\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    response: {\n      merchant_id: req.merchant_id,\n      action_type: 'DRAFT_CUSTOMER_MESSAGE',\n      status: 'failed',\n      channel: 'whatsapp',\n      provider: 'twilio',\n      error_code: twilioRes.code || (twilioRes.status ? String(twilioRes.status) : '500'),\n      outcome_note: `Twilio error: ${twilioRes.message || twilioRes.detail || 'Request failed'}`,\n      executed_at: now,\n      confirmation_source: req.confirmation_source\n    }\n  }\n}];"
+      },
+      "id": "b93c5d7e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "name": "Format Twilio Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        180
+      ]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}",
+        "responseBody": "={{ $json.response }}",
         "options": {}
       },
       "id": "f6cddf26-d816-47e6-95c5-799c6d9b9c9d",
@@ -42,7 +104,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.4,
       "position": [
-        840,
+        1480,
         300
       ]
     }
@@ -53,14 +115,54 @@
       "main": [
         [
           {
-            "node": "Execute Approved Action",
+            "node": "Validate and Prepare Action",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Execute Approved Action": {
+    "Validate and Prepare Action": {
+      "main": [
+        [
+          {
+            "node": "Branch On Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Branch On Twilio": {
+      "main": [
+        [
+          {
+            "node": "Send Twilio WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Execution Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Twilio WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Format Twilio Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Twilio Result": {
       "main": [
         [
           {

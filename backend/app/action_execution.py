@@ -27,14 +27,15 @@ class ActionConfirmationRequest(BaseModel):
     action_type: ActionType
     approved: bool
     confirmation_source: Literal["text", "voice", "ui", "api"] = "api"
+    message: str | None = None
 
 
 class ActionExecutionResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     merchant_id: str
     action_type: ActionType
-    status: Literal["executed", "prepared", "rejected"]
+    status: str
     external_id: str | None = None
     outcome_note: str
     executed_at: str | None = None
@@ -44,6 +45,12 @@ class ActionExecutionResult(BaseModel):
     message: str | None = None
     payment_link_reference: str | None = None
     confirmation_source: str | None = None
+    channel: str | None = None
+    message_sid: str | None = None
+    recipient: str | None = None
+    template_sid: str | None = None
+    draft_message: str | None = None
+    error_code: int | str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +68,44 @@ class N8NConfig:
             webhook_secret=os.getenv("N8N_WEBHOOK_SECRET") or None,
             timeout_seconds=float(os.getenv("N8N_TIMEOUT", "20")),
         )
+
+
+@dataclass(frozen=True)
+class TwilioConfig:
+    enabled: bool = False
+    account_sid: str | None = None
+    whatsapp_from: str | None = None
+    whatsapp_to: str | None = None
+    content_sid: str | None = None
+
+    @classmethod
+    def from_env(cls) -> "TwilioConfig":
+        enabled_str = os.getenv("TWILIO_WHATSAPP_ENABLED", "false").lower()
+        enabled = enabled_str in {"true", "1", "yes"}
+        return cls(
+            enabled=enabled,
+            account_sid=os.getenv("TWILIO_ACCOUNT_SID") or None,
+            whatsapp_from=os.getenv("TWILIO_WHATSAPP_FROM") or None,
+            whatsapp_to=os.getenv("TWILIO_WHATSAPP_TO") or None,
+            content_sid=os.getenv("TWILIO_CONTENT_SID") or None,
+        )
+
+    def validate_for_execution(self) -> None:
+        if not self.enabled:
+            return
+        missing = []
+        if not self.account_sid:
+            missing.append("TWILIO_ACCOUNT_SID")
+        if not self.whatsapp_from:
+            missing.append("TWILIO_WHATSAPP_FROM")
+        if not self.whatsapp_to:
+            missing.append("TWILIO_WHATSAPP_TO")
+        if not self.content_sid:
+            missing.append("TWILIO_CONTENT_SID")
+        if missing:
+            raise ActionExecutionError(
+                f"Missing required Twilio WhatsApp configuration: {', '.join(missing)}"
+            )
 
 
 def execute_action(
@@ -122,32 +167,63 @@ def _mock_execute(
             "Demo Paytm support case prepared for "
             f"{len(transaction_ids)} transaction(s) totaling ₹{pending_amount:,.0f}."
         )
-        status: Literal["executed", "prepared"] = "executed"
+        status = "executed"
+        return ActionExecutionResult(
+            merchant_id=merchant_id,
+            action_type=action_type,
+            status=status,
+            external_id=external_id,
+            outcome_note=note,
+            executed_at=now,
+            provider="mock",
+        )
     else:
-        external_id = "KK-REACT-DEMO"
         customer_id = str(payload.get("customer_id", "")).strip() or None
         message = str(payload.get("message", "")).strip() or None
+
+        if payload.get("twilio_whatsapp_to"):
+            to_num = str(payload.get("twilio_whatsapp_to"))
+            masked_recipient = (
+                to_num[:5] + "******" + to_num[-4:] if len(to_num) >= 9 else to_num
+            )
+            return ActionExecutionResult(
+                merchant_id=merchant_id,
+                action_type=action_type,
+                status="queued",
+                channel="whatsapp",
+                provider="twilio",
+                message_sid="SMmock123456789",
+                external_id="SMmock123456789",
+                customer_id=customer_id,
+                campaign_type="customer_reactivation",
+                recipient=masked_recipient,
+                template_sid=payload.get("twilio_content_sid"),
+                draft_message=message,
+                message=message,
+                payment_link_reference="KK-PAY-DEMO",
+                outcome_note="WhatsApp message submitted to Twilio using the configured trial template.",
+                executed_at=now,
+                confirmation_source="ui",
+            )
+
+        external_id = "KK-REACT-DEMO"
         note = (
             "Customer reactivation pack prepared for merchant review; "
             "nothing was sent automatically."
         )
-        status = "prepared"
-
-    return ActionExecutionResult(
-        merchant_id=merchant_id,
-        action_type=action_type,
-        status=status,
-        external_id=external_id,
-        outcome_note=note,
-        executed_at=now,
-        provider="mock",
-        campaign_type=("customer_reactivation" if action_type == "DRAFT_CUSTOMER_MESSAGE" else None),
-        customer_id=(customer_id if action_type == "DRAFT_CUSTOMER_MESSAGE" else None),
-        message=(message if action_type == "DRAFT_CUSTOMER_MESSAGE" else None),
-        payment_link_reference=(
-            "KK-PAY-DEMO" if action_type == "DRAFT_CUSTOMER_MESSAGE" else None
-        ),
-    )
+        return ActionExecutionResult(
+            merchant_id=merchant_id,
+            action_type=action_type,
+            status="prepared",
+            external_id=external_id,
+            outcome_note=note,
+            executed_at=now,
+            provider="mock",
+            campaign_type="customer_reactivation",
+            customer_id=customer_id,
+            message=message,
+            payment_link_reference="KK-PAY-DEMO",
+        )
 
 
 def _call_n8n_webhook(
@@ -209,10 +285,10 @@ def _call_n8n_webhook(
 
     result = ActionExecutionResult.model_validate(
         {
+            "provider": "n8n",
             **payload,
             "merchant_id": merchant_id,
             "action_type": action["type"],
-            "provider": "n8n",
         }
     )
     return result

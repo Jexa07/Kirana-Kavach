@@ -17,6 +17,7 @@ from .action_execution import (
     ActionConfirmationRequest,
     ActionExecutionError,
     N8NConfig,
+    TwilioConfig,
     execute_action,
 )
 from .data_store import get_merchant, get_transactions
@@ -381,6 +382,7 @@ async def voice(
             "selected_leak_type": selected_leak_type,
             "memory_items_found": len(memory_context),
             "spoken_text": spoken_text,
+            "leak": leak,
             "reasoning": reasoning_data,
             "audio": tts,
         }
@@ -513,6 +515,22 @@ async def confirm_action(
         memory_context=memory_context,
     )
     action = reasoning_result.action.model_dump()
+
+    if action.get("type") == "DRAFT_CUSTOMER_MESSAGE":
+        if payload.message:
+            action["payload"]["message"] = payload.message.strip()
+
+        twilio_config = TwilioConfig.from_env()
+        if twilio_config.enabled:
+            try:
+                twilio_config.validate_for_execution()
+            except ActionExecutionError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            action["payload"]["twilio_account_sid"] = twilio_config.account_sid
+            action["payload"]["twilio_whatsapp_from"] = twilio_config.whatsapp_from
+            action["payload"]["twilio_whatsapp_to"] = twilio_config.whatsapp_to
+            action["payload"]["twilio_content_sid"] = twilio_config.content_sid
 
     if action["type"] != payload.action_type:
         raise HTTPException(
